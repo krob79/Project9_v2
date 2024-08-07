@@ -97,6 +97,35 @@ app.get('/api/courses/:id', async function(req, res) {
   //process.exit();
 });
 
+//Create new user
+app.post('/api/courses', async (req, res) => {
+  console.log(`----CREATING NEW USER!`);
+  let newCourse = req.body;
+
+  try{
+    const course = await Course.create({
+      ...newCourse
+    });
+  }catch(error){
+    console.log("---ERROR connecting to database: " + error);
+    if(error.name === 'SequelizeValidationError'){
+        let errList = error.errors.map(err => err.message);
+        res.locals.errorList = errList;
+        res.status(500).json({message:errList});
+    }else{
+        //res.locals.errormessage = "Oops! There was an error:";
+        res.status(500).json({message:error});
+        throw error;
+    }
+  }
+
+  res.status(201).json({message:`Success creating course ${newCourse.title}`});
+
+  //res.location('/');
+
+  //process.exit();
+});
+
 // send 404 if no other route matched
 app.use((req, res) => {
   res.status(404).json({
