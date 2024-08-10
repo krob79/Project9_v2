@@ -97,9 +97,9 @@ app.get('/api/courses/:id', async function(req, res) {
   //process.exit();
 });
 
-//Create new user
+//Create new course
 app.post('/api/courses', async (req, res) => {
-  console.log(`----CREATING NEW USER!`);
+  console.log(`----CREATING NEW COURSE!`);
   let newCourse = req.body;
 
   try{
@@ -119,11 +119,71 @@ app.post('/api/courses', async (req, res) => {
     }
   }
 
-  res.status(201).json({message:`Success creating course ${newCourse.title}`});
 
-  //res.location('/');
+  res.status(201).location('/').end();
 
-  //process.exit();
+});
+
+//Delete course
+app.delete('/api/courses/:id', async (req, res) => {
+
+  let courseId = req.params.id;
+  console.log(`----DELETING COURSE ${courseId}!`);
+  let newCourse = req.body;
+
+  try{
+    const course = await Course.destroy({
+      where:{
+        id: courseId
+      }
+    });
+  }catch(error){
+    console.log("---ERROR connecting to database: " + error);
+    if(error.name === 'SequelizeValidationError'){
+        let errList = error.errors.map(err => err.message);
+        res.locals.errorList = errList;
+        res.status(500).json({message:errList});
+    }else{
+        //res.locals.errormessage = "Oops! There was an error:";
+        res.status(500).json({message:error});
+        throw error;
+    }
+  }
+  res.status(204).end();
+
+});
+
+//Update course
+app.put('/api/courses/:id', async (req, res) => {
+  let courseId = req.params.id;
+  let updatedCourseInfo = req.body;
+
+  console.log(`----UPDATING COURSE ${courseId}!`);
+
+  try{
+    const course = await Course.update(
+      {
+        ...updatedCourseInfo
+      },
+      {
+        where:{
+          id: courseId
+        }
+      });
+  }catch(error){
+    console.log("---ERROR connecting to database: " + error);
+    if(error.name === 'SequelizeValidationError'){
+        let errList = error.errors.map(err => err.message);
+        res.locals.errorList = errList;
+        res.status(500).json({message:errList});
+    }else{
+        //res.locals.errormessage = "Oops! There was an error:";
+        res.status(500).json({message:error});
+        throw error;
+    }
+  }
+  res.status(204).end();
+
 });
 
 // send 404 if no other route matched
