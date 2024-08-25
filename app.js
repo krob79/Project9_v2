@@ -6,6 +6,12 @@ const morgan = require('morgan');
 const { sequelize } = require('./models');
 const { User } = require('./models/');
 const { Course } = require('./models/');
+var bcrypt = require('bcryptjs');
+const auth =  require('basic-auth');
+
+//this doesn't work, for some reason - revisit
+//const authenticateUser = require('./middleware/auth-user');
+
 
 // variable to enable global error logging
 const enableGlobalErrorLogging = process.env.ENABLE_GLOBAL_ERROR_LOGGING === 'true';
@@ -18,6 +24,72 @@ app.use(morgan('dev'));
 
 app.use(express.json()) // for parsing application/json
 
+app.use(async function (err, req, res, next) {
+  const salt = await bcrypt.genSalt(10);
+  const secPass = await bcrypt.hash(req.body.password, salt);
+  console.error(err.stack)
+  res.status(500).send('Something broke!')
+})
+
+const authenticateUser = async(req, res, next) => {
+  let message;
+  const credentials = auth(req);
+
+  console.log("------AUTH CREDENTIALS:");
+  console.log(credentials);
+
+   // If the user's credentials are available...
+   // Attempt to retrieve the user from the data store
+   // by their username (i.e. the user's "key"
+   // from the Authorization header).
+  if(credentials){
+      const user = await User.findOne({where: {emailAddress: credentials.name} });
+      // If a user was successfully retrieved from the data store...
+      // Use the bcrypt npm package to compare the user's password
+      // (from the Authorization header) to the user's password
+      // that was retrieved from the data store.
+      if(user){
+          //Internally the compareSync() method hashes the user's password before comparing it to the stored hashed value).
+          //The user's hashed password is stored in the database under the confirmedPassword attribute.
+          console.log("----FOUND USER!");
+          const authenticated = bcrypt
+              .compareSync(credentials.pass, user.password);
+
+          // If the passwords match...
+          // Store the retrieved user object on the request object
+          // so any middleware functions that follow this middleware function
+          // will have access to the user's information.
+          if(authenticated){
+              console.log(`Authentication successful for ${user.firstName} ${user.lastName}!`);
+              //req.currentUser means that you're adding a property named currentUser to the request object and setting it to the authenticated user.
+              req.currentUser = user;
+              res.status(200).json(user);
+          }else {
+              message = `Authentication failure for username: ${user.emailAddress}`;
+          }
+
+      }else {
+          message = `User not found for username: ${user.emailAddress}`;
+          res.status(404).json({message:`User not found for username: ${user.emailAddress}`});
+      }
+  }else {
+      message = `Auth header not found.`;
+  }
+
+  // If user authentication failed...
+   // Return a response with a 401 Unauthorized HTTP status code.
+  if(message){
+      console.warn(message);
+      res.status(401).json({message: 'Access Denied'});
+  }else{
+      // Or if user authentication succeeded...
+      // Call the next() method.
+      next();
+  }
+
+}
+
+
 // setup a friendly greeting for the root route
 app.get('/', (req, res) => {
   res.json({
@@ -25,12 +97,29 @@ app.get('/', (req, res) => {
   });
 });
 
-//Find all users
-app.get('/api/users', async function(req, res) {
-  var users = await User.findAll();
-  console.log("----GETTING ALL USERS!");
-  console.log(JSON.stringify(users));
-  res.status(200).json(users);
+//Find authenticated user
+app.get('/api/users', authenticateUser, async (req, res) => {
+  try{
+    const user = req.currentUser;
+    const authenticatedUser = await User.findByPk(user.id);
+    if(authenticatedUser){
+      res.status(200).json(authenticateUser);
+    }else{
+      res.status(400).json({message:'User not found.'});
+    }
+
+  }catch(error){
+    console.error('Error fetching user:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+  // let user = req.body;
+  // console.log(`---USERNAME: ${user.emailAddress}`);
+  // res.json(req);
+  // var users = await User.findAll();
+  // console.log("----GETTING ALL USERS!");
+  // console.log(JSON.stringify(users));
+  // res.status(200).json(users);
+
   //process.exit();
 });
 
@@ -50,21 +139,26 @@ app.get('/api/users/:id', async function(req, res) {
 app.post('/api/users', async (req, res) => {
   console.log(`----CREATING NEW USER!`);
   let newUser = req.body;
-  console.log(req.body.firstName);
+  let errList;
+  let hash = bcrypt.hashSync(newUser.password, 10);
+  newUser.password = hash;
   try{
     const user = await User.create({
-      ...newUser
+      ...newUser,
     });
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
     if(error.name === 'SequelizeValidationError'){
-        let errList = error.errors.map(err => err.message);
+        errList = error.errors.map(err => err.message);
         res.locals.errorList = errList;
         res.status(500).json({message:errList});
-    }else{
+    }else if(error.name === 'SequelizeUniqueConstraintError'){
         //res.locals.errormessage = "Oops! There was an error:";
-        res.status(500).json({message:'There was an error'});
-        throw error;
+        errList = error.errors.map(err => err.message);
+        res.status(500).json({message:errList});
+    }else{
+      res.status(500).json({message:error});
+      throw error;
     }
   }
 
@@ -84,6 +178,7 @@ app.get('/api/courses', async function(req, res) {
   //process.exit();
 });
 
+//get info on one specific course
 app.get('/api/courses/:id', async function(req, res) {
   let courseId = req.params.id;
   var courses = await Course.findAll(
@@ -97,14 +192,17 @@ app.get('/api/courses/:id', async function(req, res) {
   //process.exit();
 });
 
-//Create new course
-app.post('/api/courses', async (req, res) => {
+//Create new course, with authentication
+app.post('/api/courses', authenticateUser, async (req, res) => {
   console.log(`----CREATING NEW COURSE!`);
   let newCourse = req.body;
 
   try{
+    const user = req.currentUser;
+
     const course = await Course.create({
-      ...newCourse
+      ...newCourse,
+      userId: user.id
     });
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
@@ -118,25 +216,33 @@ app.post('/api/courses', async (req, res) => {
         throw error;
     }
   }
-
 
   res.status(201).location('/').end();
 
 });
 
 //Delete course
-app.delete('/api/courses/:id', async (req, res) => {
+app.delete('/api/courses/:id', authenticateUser, async (req, res) => {
 
   let courseId = req.params.id;
   console.log(`----DELETING COURSE ${courseId}!`);
-  let newCourse = req.body;
 
   try{
-    const course = await Course.destroy({
-      where:{
-        id: courseId
+    const user = req.currentUser;
+    const course = await Course.findByPk(courseId);
+
+    if(course){
+      if(user.id == courseId){
+        await course.destroy();
+        res.status(204).end();
+      }else{
+        res.status(403).json({message:"User does not own this course and can not delete it."})
       }
-    });
+      
+    }else{
+      res.status(404).json({message:"Course not found."});
+    }
+    
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
     if(error.name === 'SequelizeValidationError'){
@@ -149,27 +255,47 @@ app.delete('/api/courses/:id', async (req, res) => {
         throw error;
     }
   }
-  res.status(204).end();
 
 });
 
 //Update course
-app.put('/api/courses/:id', async (req, res) => {
+app.put('/api/courses/:id', authenticateUser, async (req, res) => {
   let courseId = req.params.id;
   let updatedCourseInfo = req.body;
 
   console.log(`----UPDATING COURSE ${courseId}!`);
 
   try{
-    const course = await Course.update(
-      {
-        ...updatedCourseInfo
-      },
-      {
-        where:{
-          id: courseId
-        }
-      });
+    const user = req.currentUser;
+    const course = await Course.findByPk(courseId);
+
+    if(course){
+      if(user.id == course.userId){
+        console.log(`----USER ${user.id} MATCHES COURSE USER ${course.userId}!`);
+        await course.update({
+          title: updatedCourseInfo.title,
+          description: updatedCourseInfo.description
+        });
+        // await Course.update(
+        //   {
+        //     ...updatedCourseInfo
+        //   },
+        //   {
+        //     where:{
+        //       id: courseId
+        //     }
+        //   });
+        res.status(204).end();
+      }else{
+        console.log(`----USER ${user.id} DOES NOT MATCH COURSE USER ${course.userId}!`);
+        //res.json({message:"User does not own this course and can not update it."});
+        res.status(403).json({message:"User does not own this course and can not update it."});
+      }
+    }else{
+      console.log(`----COURSE NOT FOUND!`);
+      res.status(404);
+    }
+    
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
     if(error.name === 'SequelizeValidationError'){
@@ -179,10 +305,10 @@ app.put('/api/courses/:id', async (req, res) => {
     }else{
         //res.locals.errormessage = "Oops! There was an error:";
         res.status(500).json({message:error});
-        throw error;
+        //throw error;
     }
   }
-  res.status(204).end();
+  
 
 });
 
