@@ -9,7 +9,7 @@ const { Course } = require('./models/');
 var bcrypt = require('bcryptjs');
 const auth =  require('basic-auth');
 
-//this doesn't work, for some reason - revisit
+//this doesn't work, for some reason - revisit this in the future
 //const authenticateUser = require('./middleware/auth-user');
 
 
