@@ -9,7 +9,7 @@ const { Course } = require('./models/');
 var bcrypt = require('bcryptjs');
 const auth =  require('basic-auth');
 
-//externalizing this into a new file doesn't work, for some reason - revisit this in the future
+//externalizing this into a new file this doesn't work, for some reason - revisit this in the future
 //const authenticateUser = require('./middleware/auth-user');
 
 
@@ -34,9 +34,6 @@ app.use(async function (err, req, res, next) {
 const authenticateUser = async(req, res, next) => {
   let message;
   const credentials = auth(req);
-
-  console.log("------AUTH CREDENTIALS:");
-  console.log(credentials);
 
    // If the user's credentials are available...
    // Attempt to retrieve the user from the data store
@@ -63,7 +60,7 @@ const authenticateUser = async(req, res, next) => {
               console.log(`Authentication successful for ${user.firstName} ${user.lastName}!`);
               //req.currentUser means that you're adding a property named currentUser to the request object and setting it to the authenticated user.
               req.currentUser = user;
-              res.status(200).json(user);
+              //res.status(200).json({firstName: user.firstName, lastName: user.lastName, email: user.emailAddress });
           }else {
               message = `Authentication failure for username: ${user.emailAddress}`;
           }
@@ -103,7 +100,7 @@ app.get('/api/users', authenticateUser, async (req, res) => {
     const user = req.currentUser;
     const authenticatedUser = await User.findByPk(user.id);
     if(authenticatedUser){
-      res.status(200).json(authenticateUser);
+      res.status(200).json({firstName: authenticatedUser.firstName, lastName: authenticatedUser.lastName, email: authenticatedUser.emailAddress });
     }else{
       res.status(400).json({message:'User not found.'});
     }
@@ -155,7 +152,7 @@ app.post('/api/users', async (req, res) => {
     }else if(error.name === 'SequelizeUniqueConstraintError'){
         //res.locals.errormessage = "Oops! There was an error:";
         errList = error.errors.map(err => err.message);
-        res.status(500).json({message:errList});
+        res.status(400).json({message:'Email address already exists - please use a different one.'});
     }else{
       res.status(500).json({message:error});
       throw error;
@@ -173,23 +170,56 @@ app.post('/api/users', async (req, res) => {
 app.get('/api/courses', async function(req, res) {
   var courses = await Course.findAll();
   console.log("----GETTING ALL COURSES!");
-  //console.log(JSON.stringify(courses));
-  res.status(200).json(courses);
+  let filteredCourses = [];
+  //loop through courses and use a reducer function to make a new array with course information, filtering out the "createdAt" and "updatedAt" properties
+  for(var i=0; i<courses.length;i++){
+    let filtered = ['id', 'title', 'description', 'estimatedTime', 'materialsNeeded', 'userId'].reduce((result, key) => { result[key] = courses[i][key]; return result; }, {}); 
+    filteredCourses.push(filtered);
+  }
+  
+  res.status(200).json(filteredCourses);
   //process.exit();
 });
 
 //get info on one specific course
-app.get('/api/courses/:id', async function(req, res) {
-  let courseId = req.params.id;
-  var courses = await Course.findAll(
-    {
-      where: {id: courseId}
-    }
-  );
+app.get('/api/courses/:id', authenticateUser, async (req, res) => {
   console.log("----GETTING ONE COURSE!");
-  //console.log(JSON.stringify(courses));
-  res.status(200).json(courses);
-  //process.exit();
+  let courseId = req.params.id;
+  try{
+    const user = req.currentUser;
+    const course = await Course.findByPk(courseId);
+
+    if(course){
+      const filteredCourse = {...course.dataValues};
+      delete filteredCourse.createdAt;
+      delete filteredCourse.updatedAt;
+      console.log("---FOUND COURSE");
+      console.log(filteredCourse);
+      if(user.id == course.userId){
+        res.status(200).json(filteredCourse);
+      }else{
+        console.log("----USER DOESN'T OWN THIS COURSE!");
+        res.status(403).json({message:"User does not own this course and can not access it."})
+      }
+      
+    }else{
+      console.log("----COURSE NOT FOUND!");
+      res.status(404).json({message:"Course not found."});
+    }
+    
+  }catch(error){
+    console.log("---ERROR connecting to database: " + error);
+    if(error.name === 'SequelizeValidationError'){
+        let errList = error.errors.map(err => err.message);
+        res.locals.errorList = errList;
+        res.status(500).json({message:errList});
+    }else{
+        //res.locals.errormessage = "Oops! There was an error:";
+        res.status(500).json({message:error});
+        throw error;
+    }
+  }
+
 });
 
 //Create new course, with authentication
@@ -232,7 +262,7 @@ app.delete('/api/courses/:id', authenticateUser, async (req, res) => {
     const course = await Course.findByPk(courseId);
 
     if(course){
-      if(user.id == courseId){
+      if(user.id == course.userId){
         await course.destroy();
         res.status(204).end();
       }else{
@@ -270,12 +300,10 @@ app.put('/api/courses/:id', authenticateUser, async (req, res) => {
     const course = await Course.findByPk(courseId);
 
     if(course){
+      const updatedCourse = {...course.dataValues, ...updatedCourseInfo};
       if(user.id == course.userId){
         console.log(`----USER ${user.id} MATCHES COURSE USER ${course.userId}!`);
-        await course.update({
-          title: updatedCourseInfo.title,
-          description: updatedCourseInfo.description
-        });
+        await course.update(updatedCourse);
         // await Course.update(
         //   {
         //     ...updatedCourseInfo
@@ -287,7 +315,7 @@ app.put('/api/courses/:id', authenticateUser, async (req, res) => {
         //   });
         res.status(204).end();
       }else{
-        console.log(`----USER ${user.id} DOES NOT MATCH COURSE USER ${course.userId}!`);
+        console.log(`----USER ${user.id} DOES NOT MATCH COURSE OWNER ID ${course.userId}!`);
         //res.json({message:"User does not own this course and can not update it."});
         res.status(403).json({message:"User does not own this course and can not update it."});
       }
