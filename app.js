@@ -159,11 +159,9 @@ app.post('/api/users', async (req, res) => {
     }
   }
 
-  res.status(201).json({message:`Success creating user ${newUser.firstName} ${newUser.lastName}`});
+  console.log(`Success creating user ${newUser.firstName} ${newUser.lastName}`);
+  res.status(201).location('/').end();
 
-  //res.location('/');
-
-  //process.exit();
 });
 
 //return all courses, including the users associated with each course
