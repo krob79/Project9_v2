@@ -123,9 +123,8 @@ app.get('/api/users', authenticateUser, async (req, res) => {
 //Find user with specific ID
 app.get('/api/users/:id', async function(req, res) {
   let userId = req.params.id;
-  var users = await User.findAll({
-    where:{id: userId}
-  });
+  var users = await User.findByPk(userId);
+
   console.log("----GETTING ONE USER!");
   console.log(JSON.stringify(users));
   res.status(200).json(users);
@@ -171,7 +170,12 @@ app.get('/api/courses', async function(req, res) {
   let filteredCourses = [];
   //loop through courses and use a reducer function to make a new array with course information, filtering out the "createdAt" and "updatedAt" properties
   for(var i=0; i<courses.length;i++){
+    let user = await User.findByPk(courses[i].userId);
+    console.log(`----COURSE ${i}: '${courses[i].title}', by ${user.firstName} ${user.lastName}`)
     let filtered = ['id', 'title', 'description', 'estimatedTime', 'materialsNeeded', 'userId'].reduce((result, key) => { result[key] = courses[i][key]; return result; }, {}); 
+    filtered.firstName = user.firstName;
+    filtered.lastName = user.lastName;
+    filtered.emailAddress = user.emailAddress;
     filteredCourses.push(filtered);
   }
   
@@ -186,9 +190,13 @@ app.get('/api/courses/:id', authenticateUser, async (req, res) => {
   try{
     const user = req.currentUser;
     const course = await Course.findByPk(courseId);
+    const courseOwner = await User.findByPk(course.userId);
 
     if(course){
       const filteredCourse = {...course.dataValues};
+      filteredCourse.firstName = courseOwner.firstName;
+      filteredCourse.lastName = courseOwner.lastName;
+      filteredCourse.emailAddress = courseOwner.emailAddress;
       delete filteredCourse.createdAt;
       delete filteredCourse.updatedAt;
       console.log("---FOUND COURSE");
@@ -232,6 +240,8 @@ app.post('/api/courses', authenticateUser, async (req, res) => {
       ...newCourse,
       userId: user.id
     });
+    console.log(`---NEW COURSE CREATED: ${course.id}`);
+    res.status(201).location(`/courses/${course.id}`).end();
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
     if(error.name === 'SequelizeValidationError'){
@@ -245,7 +255,7 @@ app.post('/api/courses', authenticateUser, async (req, res) => {
     }
   }
 
-  res.status(201).location('/').end();
+  
 
 });
 
