@@ -236,6 +236,8 @@ app.post('/api/courses', authenticateUser, async (req, res) => {
   try{
     const user = req.currentUser;
 
+    console.log(`----TESTING Request Body firstName: ${req.body.firstName}`);
+
     const course = await Course.create({
       ...newCourse,
       userId: user.id
@@ -245,6 +247,7 @@ app.post('/api/courses', authenticateUser, async (req, res) => {
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
     if(error.name === 'SequelizeValidationError'){
+      console.log("VALIDATION ERROR");
         let errList = error.errors.map(err => err.message);
         res.locals.errorList = errList;
         res.status(500).json({message:errList});
@@ -308,19 +311,11 @@ app.put('/api/courses/:id', authenticateUser, async (req, res) => {
     const course = await Course.findByPk(courseId);
 
     if(course){
-      const updatedCourse = {...course.dataValues, ...updatedCourseInfo};
+      //Add in current values, then overwrite with updated values, then redefine the userId, in case it was added in the body, so we don't want to redefine the owner of the course
+      const updatedCourse = {...course.dataValues, ...updatedCourseInfo, userId:user.id};
       if(user.id == course.userId){
         console.log(`----USER ${user.id} MATCHES COURSE USER ${course.userId}!`);
         await course.update(updatedCourse);
-        // await Course.update(
-        //   {
-        //     ...updatedCourseInfo
-        //   },
-        //   {
-        //     where:{
-        //       id: courseId
-        //     }
-        //   });
         res.status(204).end();
       }else{
         console.log(`----USER ${user.id} DOES NOT MATCH COURSE OWNER ID ${course.userId}!`);
@@ -335,12 +330,19 @@ app.put('/api/courses/:id', authenticateUser, async (req, res) => {
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
     if(error.name === 'SequelizeValidationError'){
-        let errList = error.errors.map(err => err.message);
-        res.locals.errorList = errList;
-        res.status(500).json({message:errList});
+      console.log("VALIDATION ERROR");
+      let errList = error.errors.map(err => err.message);
+      res.locals.errorList = errList;
+      res.status(500).json({message:errList});
+    }else if(error.name === 'SequelizeUniqueConstraintError'){
+      console.log("CONSTRAINT ERROR");
+      let errList = error.errors.map(err => err.message);
+      res.locals.errorList = errList;
+      res.status(500).json({message:errList});
     }else{
+      console.log(`OTHER ERROR: ${error}`);
         //res.locals.errormessage = "Oops! There was an error:";
-        res.status(500).json({message:error});
+        res.status(500).json({message:error.message});
         //throw error;
     }
   }
