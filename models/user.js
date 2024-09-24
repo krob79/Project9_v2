@@ -1,16 +1,17 @@
 'use strict';
 const Sequelize = require('sequelize');
+const bcrypt = require('bcryptjs');
 
 module.exports = (sequelize) => {
   class User extends Sequelize.Model {}
   User.init({
     id: {
-      type: Sequelize.INTEGER,
+      type: Sequelize.DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true,
     },
     firstName: {
-      type: Sequelize.STRING,
+      type: Sequelize.DataTypes.STRING,
       allowNull: false,
       validate: {
           notNull:{
@@ -22,7 +23,7 @@ module.exports = (sequelize) => {
       }
     },
     lastName: {
-      type: Sequelize.STRING,
+      type: Sequelize.DataTypes.STRING,
       allowNull: false,
       validate: {
           notNull:{
@@ -34,7 +35,7 @@ module.exports = (sequelize) => {
       }
     },
     emailAddress: {
-      type: Sequelize.STRING,
+      type: Sequelize.DataTypes.STRING,
       allowNull: false,
       unique: true,
       validate: {
@@ -50,16 +51,38 @@ module.exports = (sequelize) => {
       }
     },
     password: {
-      type: Sequelize.STRING,
+      /* we want this to be a virtual field, meaning Sequelize will populate this field, 
+      but it doesn't actually exist or get inserted into the database. 
+      The confirmedPassword property below, which is hashed, is all we want stored. */
+      type: Sequelize.DataTypes.STRING, 
       allowNull: false,
       validate: {
           notNull:{
               msg: "A password is required for this user."
           },
           notEmpty: {
-              msg: "A password is required for this user."
-          },
+            msg: "A password is required for this user."
+          }
       }
+    },
+    confirmedPassword: {
+      type: Sequelize.DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        notNull:{
+          msg: `Both passwords must match. PASS: ${this.password} - CONFIRM: ${this.confirmedPassword}`
+        }
+      },
+      set(val){
+        if(val === this.password){
+          console.log(`----MATCH CONFIRMED! ${val} and ${this.password} are equal!`);
+          const hashedPassword = bcrypt.hashSync(val, 10);
+          this.setDataValue('password', hashedPassword);
+        }else{
+          console.log(`----PROBLEM: ${val} and ${this.password} do not match`);
+        }
+      },
+
     },
   }, { sequelize });
 

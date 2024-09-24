@@ -134,32 +134,37 @@ app.get('/api/users/:id', async function(req, res) {
 //Create new user
 app.post('/api/users', async (req, res) => {
   console.log(`----CREATING NEW USER!`);
-  let newUser = req.body;
   let errList;
-  let hash = bcrypt.hashSync(newUser.password, 10);
-  newUser.password = hash;
+  
   try{
+    let newUser = req.body;
+    
+
+    //are these lines below the problem? Are we setting this property when we shouldn't?
+    //let hash = bcrypt.hashSync(newUser.password, 10);
+    //newUser.password = hash;
+
+    console.log(`---HERE IS WHAT THE NEW USER DATA IS:`);
+    console.log(newUser);
+
     const user = await User.create({
       ...newUser,
     });
+    console.log(`Success creating user ${newUser.firstName} ${newUser.lastName}`);
+    res.status(201).location('/').end();
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError'){
+    if(error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError'){
+        console.log(`SEQUELIZE ERROR: ${error.name}`);
         errList = error.errors.map(err => err.message);
         res.locals.errorList = errList;
-        res.status(500).json({message:errList});
-    }else if(error.name === 'SequelizeUniqueConstraintError'){
-        //res.locals.errormessage = "Oops! There was an error:";
-        errList = error.errors.map(err => err.message);
-        res.status(400).json({message:'Email address already exists - please use a different one.'});
+        res.status(400).json({message:errList}).end();
     }else{
-      res.status(500).json({message:error});
       throw error;
     }
   }
 
-  console.log(`Success creating user ${newUser.firstName} ${newUser.lastName}`);
-  res.status(201).location('/').end();
+  
 
 });
 
@@ -218,7 +223,7 @@ app.get('/api/courses/:id', authenticateUser, async (req, res) => {
     if(error.name === 'SequelizeValidationError'){
         let errList = error.errors.map(err => err.message);
         res.locals.errorList = errList;
-        res.status(500).json({message:errList});
+        res.status(400).json({message:errList});
     }else{
         //res.locals.errormessage = "Oops! There was an error:";
         res.status(500).json({message:error});
@@ -246,15 +251,13 @@ app.post('/api/courses', authenticateUser, async (req, res) => {
     res.status(201).location(`/courses/${course.id}`).end();
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError'){
-      console.log("VALIDATION ERROR");
-        let errList = error.errors.map(err => err.message);
-        res.locals.errorList = errList;
-        res.status(500).json({message:errList});
+    if(error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError'){
+      console.log(`SEQUELIZE ERROR: ${error.name}`);
+      errList = error.errors.map(err => err.message);
+      res.locals.errorList = errList;
+      res.status(400).json({message:errList}).end();
     }else{
-        //res.locals.errormessage = "Oops! There was an error:";
-        res.status(500).json({message:error});
-        throw error;
+      throw error;
     }
   }
 
@@ -291,8 +294,6 @@ app.delete('/api/courses/:id', authenticateUser, async (req, res) => {
         res.locals.errorList = errList;
         res.status(500).json({message:errList});
     }else{
-        //res.locals.errormessage = "Oops! There was an error:";
-        res.status(500).json({message:error});
         throw error;
     }
   }
@@ -329,21 +330,13 @@ app.put('/api/courses/:id', authenticateUser, async (req, res) => {
     
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError'){
-      console.log("VALIDATION ERROR");
-      let errList = error.errors.map(err => err.message);
+    if(error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError'){
+      console.log(`SEQUELIZE ERROR: ${error.name}`);
+      errList = error.errors.map(err => err.message);
       res.locals.errorList = errList;
-      res.status(500).json({message:errList});
-    }else if(error.name === 'SequelizeUniqueConstraintError'){
-      console.log("CONSTRAINT ERROR");
-      let errList = error.errors.map(err => err.message);
-      res.locals.errorList = errList;
-      res.status(500).json({message:errList});
+      res.status(400).json({message:errList}).end();
     }else{
-      console.log(`OTHER ERROR: ${error}`);
-        //res.locals.errormessage = "Oops! There was an error:";
-        res.status(500).json({message:error.message});
-        //throw error;
+      throw error;
     }
   }
   
