@@ -167,8 +167,6 @@ app.post('/api/users', async (req, res) => {
     }
   }
 
-  
-
 });
 
 //return all courses, including the users associated with each course
@@ -203,9 +201,9 @@ app.get('/api/courses/:id', authenticateUser, async (req, res) => {
   try{
     const user = req.currentUser;
     const course = await Course.findByPk(courseId);
-    const courseOwner = await User.findByPk(course.userId);
-
+    
     if(course){
+      const courseOwner = await User.findByPk(course.userId);
       const filteredCourse = {...course.dataValues};
       filteredCourse.courseOwner = {
         id: courseOwner.id,
@@ -213,7 +211,7 @@ app.get('/api/courses/:id', authenticateUser, async (req, res) => {
         lastName: courseOwner.lastName,
         emailAddress: courseOwner.emailAddress
       }
-      delete filteredCourse.userId;
+      //delete filteredCourse.userId;
       delete filteredCourse.createdAt;
       delete filteredCourse.updatedAt;
       console.log("---FOUND COURSE");
