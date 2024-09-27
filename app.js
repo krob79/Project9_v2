@@ -31,6 +31,16 @@ app.use(async function (err, req, res, next) {
   res.status(500).send('Something broke!')
 })
 
+const checkSequelizeErrors = (error) => {
+  let errList;
+  console.log("---ERROR connecting to database: " + error);
+  if(error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError'){
+      console.log(`SEQUELIZE ERROR: ${error.name}`);
+      errList = error.errors.map(err => err.message);
+  }
+  return errList;
+}
+
 const authenticateUser = async(req, res, next) => {
   let message;
   const credentials = auth(req);
@@ -62,26 +72,28 @@ const authenticateUser = async(req, res, next) => {
               req.currentUser = user;
               //res.status(200).json({firstName: user.firstName, lastName: user.lastName, email: user.emailAddress });
           }else {
-              message = `Authentication failure for username: ${user.emailAddress}`;
+              message = `Access Denied - Authentication failure for username: ${user.emailAddress}`;
+              res.status(401).json({message:`${message}`});
           }
 
       }else {
-          message = `User not found for username: ${user.emailAddress}`;
-          res.status(404).json({message:`User not found for username: ${user.emailAddress}`});
+          message = `Access Denied - User not found.`;
+          res.status(404).json({message:`${message}`});
       }
   }else {
       message = `Auth header not found.`;
+      res.status(401).json({message: 'Access Denied - Auth header not found.'});
   }
 
   // If user authentication failed...
-   // Return a response with a 401 Unauthorized HTTP status code.
-  if(message){
-      console.warn(message);
-      res.status(401).json({message: 'Access Denied'});
+   //Return a response with a 401 Unauthorized HTTP status code.
+
+  //if user authentication succeeded...
+  // Call the next() method.
+  if(!message){
+     next();
   }else{
-      // Or if user authentication succeeded...
-      // Call the next() method.
-      next();
+      console.warn("---WARNING: " + message);
   }
 
 }
@@ -100,7 +112,7 @@ app.get('/api/users', authenticateUser, async (req, res) => {
     const user = req.currentUser;
     const authenticatedUser = await User.findByPk(user.id);
     if(authenticatedUser){
-      res.status(200).json({firstName: authenticatedUser.firstName, lastName: authenticatedUser.lastName, email: authenticatedUser.emailAddress });
+      res.status(200).json({id: authenticatedUser.id, firstName: authenticatedUser.firstName, lastName: authenticatedUser.lastName, email: authenticatedUser.emailAddress });
     }else{
       res.status(400).json({message:'User not found.'});
     }
@@ -138,27 +150,18 @@ app.post('/api/users', async (req, res) => {
   
   try{
     let newUser = req.body;
-    
-
-    //are these lines below the problem? Are we setting this property when we shouldn't?
-    //let hash = bcrypt.hashSync(newUser.password, 10);
-    //newUser.password = hash;
-
-    console.log(`---HERE IS WHAT THE NEW USER DATA IS:`);
-    console.log(newUser);
 
     const user = await User.create({
       ...newUser,
     });
+
     console.log(`Success creating user ${newUser.firstName} ${newUser.lastName}`);
-    res.status(201).location('/').end();
+    res.status(201).location('/');
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError'){
-        console.log(`SEQUELIZE ERROR: ${error.name}`);
-        errList = error.errors.map(err => err.message);
-        res.locals.errorList = errList;
-        res.status(400).json({message:errList}).end();
+    let errList = checkSequelizeErrors(error);
+    if(errList.length > 0){
+      res.status(400).json({message:errList});
     }else{
       throw error;
     }
@@ -176,11 +179,16 @@ app.get('/api/courses', async function(req, res) {
   //loop through courses and use a reducer function to make a new array with course information, filtering out the "createdAt" and "updatedAt" properties
   for(var i=0; i<courses.length;i++){
     let user = await User.findByPk(courses[i].userId);
-    console.log(`----COURSE ${i}: '${courses[i].title}', by ${user.firstName} ${user.lastName}`)
-    let filtered = ['id', 'title', 'description', 'estimatedTime', 'materialsNeeded', 'userId'].reduce((result, key) => { result[key] = courses[i][key]; return result; }, {}); 
-    filtered.firstName = user.firstName;
-    filtered.lastName = user.lastName;
-    filtered.emailAddress = user.emailAddress;
+    console.log(`----COURSE ${i}: '${courses[i].title}', by ${user.firstName} ${user.lastName}`);
+    //double check this use of the reduce method - seems to work, but I'm not clear on HOW it works...
+    let filtered = ['id', 'title', 'description', 'estimatedTime', 'materialsNeeded'].reduce((result, key) => { result[key] = courses[i][key]; return result; }, {}); 
+    //create a 'courseOwner' property in the filtered object with all of the owner's info
+    filtered.courseOwner = {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      emailAddress: user.emailAddress
+    }
     filteredCourses.push(filtered);
   }
   
@@ -199,19 +207,19 @@ app.get('/api/courses/:id', authenticateUser, async (req, res) => {
 
     if(course){
       const filteredCourse = {...course.dataValues};
-      filteredCourse.firstName = courseOwner.firstName;
-      filteredCourse.lastName = courseOwner.lastName;
-      filteredCourse.emailAddress = courseOwner.emailAddress;
+      filteredCourse.courseOwner = {
+        id: courseOwner.id,
+        firstName: courseOwner.firstName,
+        lastName: courseOwner.lastName,
+        emailAddress: courseOwner.emailAddress
+      }
+      delete filteredCourse.userId;
       delete filteredCourse.createdAt;
       delete filteredCourse.updatedAt;
       console.log("---FOUND COURSE");
       console.log(filteredCourse);
-      if(user.id == course.userId){
-        res.status(200).json(filteredCourse);
-      }else{
-        console.log("----USER DOESN'T OWN THIS COURSE!");
-        res.status(403).json({message:"User does not own this course and can not access it."})
-      }
+      res.status(200).json(filteredCourse);
+
       
     }else{
       console.log("----COURSE NOT FOUND!");
@@ -220,14 +228,12 @@ app.get('/api/courses/:id', authenticateUser, async (req, res) => {
     
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError'){
-        let errList = error.errors.map(err => err.message);
-        res.locals.errorList = errList;
-        res.status(400).json({message:errList});
+    let errList = checkSequelizeErrors(error);
+    if(errList.length > 0){
+      res.status(400).json({message:errList});
     }else{
-        //res.locals.errormessage = "Oops! There was an error:";
-        res.status(500).json({message:error});
-        throw error;
+      res.status(500).json({message:error});
+      throw error;
     }
   }
 
@@ -243,6 +249,7 @@ app.post('/api/courses', authenticateUser, async (req, res) => {
 
     console.log(`----TESTING Request Body firstName: ${req.body.firstName}`);
 
+    //adding the user.id property, to ensure that it can't be overwritten by something from the request body
     const course = await Course.create({
       ...newCourse,
       userId: user.id
@@ -251,11 +258,9 @@ app.post('/api/courses', authenticateUser, async (req, res) => {
     res.status(201).location(`/courses/${course.id}`).end();
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError'){
-      console.log(`SEQUELIZE ERROR: ${error.name}`);
-      errList = error.errors.map(err => err.message);
-      res.locals.errorList = errList;
-      res.status(400).json({message:errList}).end();
+    let errList = checkSequelizeErrors(error);
+    if(errList.length > 0){
+      res.status(400).json({message:errList});
     }else{
       throw error;
     }
@@ -289,12 +294,11 @@ app.delete('/api/courses/:id', authenticateUser, async (req, res) => {
     
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError'){
-        let errList = error.errors.map(err => err.message);
-        res.locals.errorList = errList;
-        res.status(500).json({message:errList});
+    let errList = checkSequelizeErrors(error);
+    if(errList.length > 0){
+      res.status(500).json({message:errList});
     }else{
-        throw error;
+      throw error;
     }
   }
 
@@ -325,16 +329,14 @@ app.put('/api/courses/:id', authenticateUser, async (req, res) => {
       }
     }else{
       console.log(`----COURSE NOT FOUND!`);
-      res.status(404);
+      res.status(404).end();
     }
     
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
-    if(error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError'){
-      console.log(`SEQUELIZE ERROR: ${error.name}`);
-      errList = error.errors.map(err => err.message);
-      res.locals.errorList = errList;
-      res.status(400).json({message:errList}).end();
+    let errList = checkSequelizeErrors(error);
+    if(errList.length > 0){
+      res.status(400).json({message:errList});
     }else{
       throw error;
     }

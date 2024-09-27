@@ -37,7 +37,10 @@ module.exports = (sequelize) => {
     emailAddress: {
       type: Sequelize.DataTypes.STRING,
       allowNull: false,
-      unique: true,
+      unique: {
+        args: true,
+        msg: `This email address is already in use -  must be unique.`
+      },
       validate: {
           notNull:{
               msg: "An email is required for this user."
@@ -51,39 +54,28 @@ module.exports = (sequelize) => {
       }
     },
     password: {
-      /* we want this to be a virtual field, meaning Sequelize will populate this field, 
-      but it doesn't actually exist or get inserted into the database. 
-      The confirmedPassword property below, which is hashed, is all we want stored. */
       type: Sequelize.DataTypes.STRING, 
       allowNull: false,
+      notEmpty: false,
       validate: {
           notNull:{
               msg: "A password is required for this user."
           },
           notEmpty: {
-            msg: "A password is required for this user."
+              msg: "Password can not be empty."
+          },
+          len: {
+            args: [8-16],
+            msg: "Password must be 8-16 characters in length."
           }
-      }
-    },
-    confirmedPassword: {
-      type: Sequelize.DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        notNull:{
-          msg: `Both passwords must match. PASS: ${this.password} - CONFIRM: ${this.confirmedPassword}`
-        }
       },
       set(val){
-        if(val === this.password){
-          console.log(`----MATCH CONFIRMED! ${val} and ${this.password} are equal!`);
+        if(val){
           const hashedPassword = bcrypt.hashSync(val, 10);
           this.setDataValue('password', hashedPassword);
-        }else{
-          console.log(`----PROBLEM: ${val} and ${this.password} do not match`);
         }
-      },
-
-    },
+      }
+    }
   }, { sequelize });
 
   User.associate = (models) => {
