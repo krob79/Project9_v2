@@ -26,10 +26,10 @@ module.exports = (sequelize) => {
       allowNull: false,
       validate: {
           notNull:{
-              msg: "Please add a description for this course."
+              msg: "A description is required for this course."
           },
           notEmpty: {
-              msg: "Please add a description for this course."
+              msg: "A description is required for this course."
           },
       }
     },

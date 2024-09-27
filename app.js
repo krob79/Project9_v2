@@ -70,7 +70,7 @@ const authenticateUser = async(req, res, next) => {
               console.log(`Authentication successful for ${user.firstName} ${user.lastName}!`);
               //req.currentUser means that you're adding a property named currentUser to the request object and setting it to the authenticated user.
               req.currentUser = user;
-              //res.status(200).json({firstName: user.firstName, lastName: user.lastName, email: user.emailAddress });
+              
           }else {
               message = `Access Denied - Authentication failure for username: ${user.emailAddress}`;
               res.status(401).json({message:`${message}`});
@@ -78,7 +78,7 @@ const authenticateUser = async(req, res, next) => {
 
       }else {
           message = `Access Denied - User not found.`;
-          res.status(404).json({message:`${message}`});
+          res.status(401).json({message:`${message}`});
       }
   }else {
       message = `Auth header not found.`;
@@ -121,15 +121,7 @@ app.get('/api/users', authenticateUser, async (req, res) => {
     console.error('Error fetching user:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
-  // let user = req.body;
-  // console.log(`---USERNAME: ${user.emailAddress}`);
-  // res.json(req);
-  // var users = await User.findAll();
-  // console.log("----GETTING ALL USERS!");
-  // console.log(JSON.stringify(users));
-  // res.status(200).json(users);
 
-  //process.exit();
 });
 
 //Find user with specific ID
@@ -140,7 +132,7 @@ app.get('/api/users/:id', async function(req, res) {
   console.log("----GETTING ONE USER!");
   console.log(JSON.stringify(users));
   res.status(200).json(users);
-  //process.exit();
+
 });
 
 //Create new user
@@ -156,7 +148,7 @@ app.post('/api/users', async (req, res) => {
     });
 
     console.log(`Success creating user ${newUser.firstName} ${newUser.lastName}`);
-    res.status(201).location('/');
+    res.status(201).location('/').end();
   }catch(error){
     console.log("---ERROR connecting to database: " + error);
     let errList = checkSequelizeErrors(error);
@@ -195,11 +187,10 @@ app.get('/api/courses', async function(req, res) {
 });
 
 //get info on one specific course
-app.get('/api/courses/:id', authenticateUser, async (req, res) => {
+app.get('/api/courses/:id', async (req, res) => {
   console.log("----GETTING ONE COURSE!");
   let courseId = req.params.id;
   try{
-    const user = req.currentUser;
     const course = await Course.findByPk(courseId);
     
     if(course){

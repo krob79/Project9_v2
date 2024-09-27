@@ -39,7 +39,7 @@ module.exports = (sequelize) => {
       allowNull: false,
       unique: {
         args: true,
-        msg: `This email address is already in use -  must be unique.`
+        msg: `This email address is already in use - email must be unique.`
       },
       validate: {
           notNull:{
@@ -49,7 +49,7 @@ module.exports = (sequelize) => {
               msg: "An email is required for this user."
           },
           isEmail: {
-            msg: "User's eMail address must be valid format, ex: name@domain.com"
+            msg: "User's email address must be valid format, ex: name@domain.com"
           },
       }
     },
